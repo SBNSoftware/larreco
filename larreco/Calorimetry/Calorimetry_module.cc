@@ -103,6 +103,7 @@ namespace calo {
     std::string fSpacePointModuleLabel;
     std::string fT0ModuleLabel;
     bool fUseArea;
+    bool fUseSumADC;
     bool fSCE;
     bool fFlipTrack_dQdx; //flip track direction if significant rise of dQ/dx at the track start
     std::optional<double> fNotOnTrackZcut; ///< Exclude trajectory points with _z_ lower than this [cm]
@@ -133,6 +134,7 @@ calo::Calorimetry::Calorimetry(fhicl::ParameterSet const& pset)
     fSpacePointModuleLabel (pset.get< std::string >("SpacePointModuleLabel")       ),
     fT0ModuleLabel (pset.get< std::string >("T0ModuleLabel") ),
     fUseArea(pset.get< bool >("UseArea") ),
+    fUseSumADC(pset.get<bool>("UseSumADC", false)),
     fSCE(pset.get< bool >("CorrectSCE")),
     fFlipTrack_dQdx(pset.get< bool >("FlipTrack_dQdx",true)),
     caloAlg(pset.get< fhicl::ParameterSet >("CaloAlg"))
@@ -143,6 +145,26 @@ calo::Calorimetry::Calorimetry(fhicl::ParameterSet const& pset)
 
   produces< std::vector<anab::Calorimetry>              >();
   produces< art::Assns<recob::Track, anab::Calorimetry> >();
+}
+
+bool isGoodHit(const art::Ptr<recob::Hit> hit, const art::Ptr<recob::Track> track, const art::FindManyP<recob::Hit, recob::TrackHitMeta> &fmthm, unsigned i_trk) {
+  // if we aren't using the TrackHitMeta to determine effective pitch, all hits are good
+  if (!fmthm.isValid()) return true;
+  auto vhit = fmthm.at(i_trk);
+  auto vmeta = fmthm.data(i_trk);
+  for (size_t ii = 0; ii<vhit.size(); ++ii){
+    if (vhit[ii].key() == hit.key()) {
+      if (vmeta[ii]->Index() == std::numeric_limits<int>::max()){
+        return false;
+      }
+      if (!track->HasValidPoint(vmeta[ii]->Index())){
+        return false;
+      }
+      return true;
+    }
+  }
+
+  return false;
 }
 
 //------------------------------------------------------------------------------------//
@@ -349,6 +371,39 @@ void calo::Calorimetry::produce(art::Event& evt)
 
 	double charge = allHits[hits[ipl][ihit]]->PeakAmplitude();
 	if (fUseArea) charge = allHits[hits[ipl][ihit]]->Integral();
+        else if (fUseSumADC) {
+          charge =  allHits[hits[ipl][ihit]]->SummedADC();
+          // If using SumADC to measure hit area, then the area measure for a single hit
+          // includes the area under the full "snippet". Thus, using SumADC for each hit 
+          // can over-count the charge if a track uses multiple hits in a snippet to 
+          // construct different space points. We do a disambiguation here to make sure we 
+          // don't double count.
+          //
+          // What measure do we use to pick the "best" hit in a snippet in the case that there
+          // are multiple options?
+          //
+          // For now, pick the individual hit amplitude
+          if (allHits[hits[ipl][ihit]]->Multiplicity() > 1 /* snippet */ && isGoodHit(allHits[hits[ipl][ihit]], tracklist[trkIter], fmthm, trkIter)) {
+            bool save = true;
+            for (size_t jhit = 0; jhit < hits[ipl].size(); ++jhit) {
+              // dont't count this hit
+              if (ihit == jhit) continue;
+
+              // If we find any hits with a larger amplitude on the same snippet, then we don't count this hit
+              bool same_snippet = allHits[hits[ipl][ihit]]->StartTick() == allHits[hits[ipl][jhit]]->StartTick() &&
+                                  allHits[hits[ipl][ihit]]->EndTick() == allHits[hits[ipl][jhit]]->EndTick() &&
+                                  allHits[hits[ipl][ihit]]->WireID() == allHits[hits[ipl][jhit]]->WireID();
+              bool is_larger = allHits[hits[ipl][jhit]]->Integral() > allHits[hits[ipl][ihit]]->Integral();
+              // if they are the same size, break tie by the index
+              if (allHits[hits[ipl][jhit]]->Integral() == allHits[hits[ipl][ihit]]->Integral()) is_larger = jhit > ihit;
+              if (same_snippet && is_larger && isGoodHit(allHits[hits[ipl][jhit]], tracklist[trkIter], fmthm, trkIter)) {
+                save = false;
+                break;
+              }
+            }
+            if (!save) continue;
+          }
+        }
 	//get 3d coordinate and track pitch for the current hit
 	//not all hits are associated with space points, the method uses neighboring spacepts to interpolate
 	double xyz3d[3];
