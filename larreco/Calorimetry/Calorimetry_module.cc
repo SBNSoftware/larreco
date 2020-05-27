@@ -99,6 +99,7 @@ namespace calo {
     void GetPitch(art::Ptr<recob::Hit> hit, std::vector<double> trkx, std::vector<double> trky, std::vector<double> trkz, std::vector<double> trkw, std::vector<double> trkx0, double *xyz3d, double &pitch, double TickT0);
 
     std::string fTrackModuleLabel;
+    std::string fHitModuleLabel;
     std::string fSpacePointModuleLabel;
     std::string fT0ModuleLabel;
     bool fUseArea;
@@ -128,6 +129,7 @@ namespace calo {
 calo::Calorimetry::Calorimetry(fhicl::ParameterSet const& pset)
   : EDProducer{pset},
     fTrackModuleLabel(pset.get< std::string >("TrackModuleLabel")      ),
+    fHitModuleLabel(pset.get<std::string>("HitModuleLabel", fTrackModuleLabel)),
     fSpacePointModuleLabel (pset.get< std::string >("SpacePointModuleLabel")       ),
     fT0ModuleLabel (pset.get< std::string >("T0ModuleLabel") ),
     fUseArea(pset.get< bool >("UseArea") ),
@@ -169,9 +171,9 @@ void calo::Calorimetry::produce(art::Event& evt)
   std::unique_ptr< std::vector<anab::Calorimetry> > calorimetrycol(new std::vector<anab::Calorimetry>);
   std::unique_ptr< art::Assns<recob::Track, anab::Calorimetry> > assn(new art::Assns<recob::Track, anab::Calorimetry>);
 
-  //art::FindManyP<recob::SpacePoint> fmsp(trackListHandle, evt, fTrackModuleLabel);
-  art::FindManyP<recob::Hit>        fmht(trackListHandle, evt, fTrackModuleLabel);
-  art::FindManyP<recob::Hit, recob::TrackHitMeta> fmthm(trackListHandle, evt, fTrackModuleLabel); //this has more information about hit-track association, only available in PMA for now
+  //art::FindManyP<recob::SpacePoint> fmsp(trackListHandle, evt, fHitModuleLabel);
+  art::FindManyP<recob::Hit>        fmht(trackListHandle, evt, fHitModuleLabel);
+  art::FindManyP<recob::Hit, recob::TrackHitMeta> fmthm(trackListHandle, evt, fHitModuleLabel); //this has more information about hit-track association, only available in PMA for now
   art::FindManyP<anab::T0>          fmt0(trackListHandle, evt, fT0ModuleLabel);
 
   for(size_t trkIter = 0; trkIter < tracklist.size(); ++trkIter){
