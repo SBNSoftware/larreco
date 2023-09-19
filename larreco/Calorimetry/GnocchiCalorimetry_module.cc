@@ -26,6 +26,7 @@
 #include "lardataobj/AnalysisBase/T0.h"
 #include "lardataobj/RecoBase/Hit.h"
 #include "lardataobj/RecoBase/Track.h"
+#include "lardataobj/RecoBase/PFParticle.h"
 #include "lardataobj/RecoBase/TrackHitMeta.h"
 #include "larevt/CalibrationDBI/Interface/ChannelStatusProvider.h"
 #include "larevt/CalibrationDBI/Interface/ChannelStatusService.h"
@@ -221,7 +222,15 @@ void calo::GnocchiCalorimetry::produce(art::Event& evt)
   art::FindManyP<recob::Hit, recob::TrackHitMeta> fmHits(trackListHandle, evt, hitLabel);
 
   // must be valid if the T0 module label is non-empty
-  art::FindManyP<anab::T0> fmT0s(trackListHandle, evt, fConfig.T0ModuleLabel());
+  art::Handle<std::vector<recob::PFParticle>> pfpListHandle;
+  std::vector<art::Ptr<recob::PFParticle>> pfplist;
+  if (evt.getByLabel(fConfig.T0ModuleLabel(), pfpListHandle)) {
+    art::fill_ptr_vector(pfplist, pfpListHandle);
+  }
+  //// TEST//// art::FindManyP<anab::T0> fmT0s(trackListHandle, evt, fConfig.T0ModuleLabel());
+  art::FindManyP<recob::PFParticle> fmPFPs(trackListHandle, evt, fConfig.TrackModuleLabel());
+  art::FindManyP<anab::T0> fmT0s(pfpListHandle, evt, fConfig.T0ModuleLabel());
+
 
   for (auto const& nt : fNormTools)
     nt->setup(evt);
@@ -234,10 +243,19 @@ void calo::GnocchiCalorimetry::produce(art::Event& evt)
     const std::vector<art::Ptr<recob::Hit>>& hits = fmHits.at(trk_i);
     const std::vector<const recob::TrackHitMeta*>& thms = fmHits.data(trk_i);
 
+  //// TEST////    double T0 = 0;
+  //// TEST////     if (fConfig.T0ModuleLabel().size()) {
+  //// TEST////       const std::vector<art::Ptr<anab::T0>>& this_t0s = fmT0s.at(trk_i);
+  //// TEST////       if (this_t0s.size()) T0 = this_t0s.at(0)->Time();
+  //// TEST////     }
+
     double T0 = 0;
     if (fConfig.T0ModuleLabel().size()) {
-      const std::vector<art::Ptr<anab::T0>>& this_t0s = fmT0s.at(trk_i);
-      if (this_t0s.size()) T0 = this_t0s.at(0)->Time();
+      const std::vector<art::Ptr<recob::PFParticle>>& this_pfps = fmPFPs.at(trk_i);
+      if (this_pfps.size()) {
+        const std::vector<art::Ptr<anab::T0>>& this_t0s = fmT0s.at(this_pfps.at(0).key());
+        if (this_t0s.size()) T0 = this_t0s.at(0)->Time();
+      }
     }
 
     // organize the hits by plane
