@@ -10,6 +10,8 @@ cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
 
 find_package(cetmodules 3.12.00 REQUIRED)
 project(larreco VERSION 10.03.03 LANGUAGES CXX)
+# Explicitly set the project string
+set(${PROJECT_NAME}_CMAKE_PROJECT_VERSION_STRING "10.03.03__sbn2")
 
 include(CetCMakeEnv)
 cet_cmake_env()
